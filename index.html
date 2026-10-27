@@ -29,7 +29,6 @@
   header .grow{flex:1}
   .badge{font:10.5px/1 var(--mono);padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--dim);white-space:nowrap}
   .badge.on{color:var(--accent);border-color:#2b5f57;background:#0d2a26}
-  .badge.nsfw{color:#ff9ecd;border-color:#5f2b45;background:#2a0d1b}
   .badge.hideable{display:none}
   @media (min-width:760px){ .badge.hideable{display:inline-block} }
   main{display:grid;grid-template-columns:minmax(380px,1.15fr) minmax(340px,1fr);gap:16px;padding:16px;align-items:start}
@@ -65,10 +64,10 @@
   .switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
   .switch input{appearance:none;width:42px;height:23px;border-radius:999px;background:#242a3a;border:1px solid var(--line);
                 position:relative;cursor:pointer;transition:.18s;flex:none}
-  .switch input:checked{background:#3b1030;border-color:#7d3a63}
+  .switch input:checked{background:#0d2a26;border-color:#2b5f57}
   .switch input::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;
                        background:#8b93a7;transition:.18s}
-  .switch input:checked::after{left:20px;background:#ff9ecd}
+  .switch input:checked::after{left:20px;background:var(--accent)}
   .switch span{font-size:12px}
   input[type=range]{width:100%;accent-color:var(--accent)}
   .queue{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto}
@@ -112,7 +111,6 @@
   <div class="badge hideable" id="camBadge">camera: off</div>
   <div class="badge" id="folderBadge">save: ?</div>
   <div class="badge hideable" id="modeBadge">mode: serious</div>
-  <div class="badge nsfw" id="nsfwBadge" style="display:none">18+ ON</div>
 </header>
 
 <main>
@@ -137,14 +135,6 @@
       <label class="field">Mode — the flavour of "immediately after"<div class="modes" id="modes"></div></label>
       <div class="hint" id="modeBlurb" style="margin-top:8px"></div>
       <label class="switch" style="margin-top:9px"><input type="checkbox" id="shuffle"><span>Randomize mode per shot</span></label>
-
-      <div class="sep"></div>
-      <label class="switch"><input type="checkbox" id="nsfw"><span><b>18+ explicit layer</b> — lewd, kinky, hardcore</span></label>
-      <div class="row" style="margin-top:8px">
-        <label class="field" style="flex:1;min-width:180px">Intensity — <span id="intLabel">3</span>/5
-          <input type="range" id="intensity" min="1" max="5" step="1" value="3"></label>
-        <label class="switch" style="max-width:250px"><input type="checkbox" id="prepass"><span>Pre-pass: rewrite the still first</span></label>
-      </div>
 
       <div class="sep"></div>
       <label class="field">Custom direction <span class="hint">(Custom mode, or layered on any mode)</span>
@@ -212,7 +202,7 @@
    ========================================================================== */
 
 const API_DIRECT = "https://api.venice.ai/api/v1";
-const API_PROXY  = "/venice";
+const API_PROXY  = "/api/venice";
 const LS_KEY = "continuum.settings.v2";
 const POLL_MS = 5000;
 const JOB_ACTIVE_TIMEOUT_MS = 12 * 60 * 1000;
@@ -232,7 +222,7 @@ const state = {
     apiKey: "", directorModel: "qwen3-vl-235b-a22b",
     videoModel: "minimax-h3-image-to-video",
     duration: "8s", resolution: "768P", capWidth: 1280,
-    mode: "serious", nsfw: false, intensity: 3, prepass: false,
+    mode: "serious",
     shuffle: false, mirror: true, saveStills: true, sendAR: false,
     useProxy: HOSTED, custom: ""
   },
@@ -310,17 +300,6 @@ Return ONLY a JSON object with exactly these keys:
 {"scene": string, "slug": string, "caption": string, "motion_prompt": string, "negative_prompt": string, "edit_prompt": string|null}
 "motion_prompt" is 1-3 dense sentences for the video model. "caption" is one plain human sentence.`;
 
-const NSFW_BRIEF = `18+ EXPLICIT LAYER — intensity {{n}}/5.
-The continuation is a sexual escalation of the frozen frame. Make the following true in the motion_prompt:
-- BODIES: nudity, partial undress, exposed skin, sheen, sweat, goosebumps, arousal. Name anatomy where the frame allows: breasts, nipples, areolae, stomach, thighs, ass, pubic hair or shaved, labia, shaft, glans, balls, wetness, precum, fluids glistening.
-- ACTIONS: undressing, a strap slipping, clothing pulled aside, hands travelling, touching, stroking, grinding, hips rolling, thighs spreading, penetration, oral, hair gripped, back arching, toes curling, sheets bunched.
-- FACES: flushed cheeks, bitten lip, half-lidded eyes, open gasping mouth, eye contact straight into the lens.
-- SOUND: [breath], [wet sounds], [skin slap], [moan], [gasp], [fabric rustle], [a whispered word].
-- CAMERA: closer and lower, lingering on anatomy, slight handheld drift, a slow push-in as the peak lands.
-- Wording must be explicitly sexual, never tastefully vague. Escalate across the clip; hit the peak in the final third.
-- If no human is in frame, treat the object as a body: anthropomorphise it lewdly (the mug's "hips", the pen's "shaft") — the scene becomes a filthy metaphor.
-- Intensity: 1 = slow sensual tease, 2 = softcore undress, 3 = explicit and rhythmic, 4 = hard, messy, sweaty, 5 = filthy, kinky, fetish-coded, breathless.`;
-
 const MODES = {
   boring: { label:"Boring", blurb:"Aggressively mundane. Nothing happens, very slowly.",
     brief:`BORING. The next few seconds are aggressively mundane. Almost nothing happens. Locked-off tripod, flat honest lighting, no styling. Only the smallest ambient motion: a blink, a breath, dust drifting in a light beam, a page edge lifting two millimetres, a fridge hum you can feel. No reveal, no punchline, no drama, no coincidence. The event, if there is one at all, is so minor it barely counts. Dull, comfortable, real.`,
@@ -352,8 +331,7 @@ const BASE_NEGATIVE = "low resolution, error, worst quality, low quality, defect
 const apiBase = () => state.settings.useProxy ? API_PROXY : API_DIRECT;
 function apiHeaders() {
   const h = {"Content-Type": "application/json"};
-  if (!state.settings.useProxy && state.settings.apiKey) h.Authorization = "Bearer " + state.settings.apiKey.trim();
-  else if (state.settings.apiKey) h.Authorization = "Bearer " + state.settings.apiKey.trim(); // proxy forwards it
+  if (state.settings.apiKey) h.Authorization = "Bearer " + state.settings.apiKey.trim();
   return h;
 }
 const apiFetch = (path, {method="POST", body} = {}) =>
@@ -464,14 +442,14 @@ async function shoot() {
   const frame = grabFrame();
   const item = {
     id: crypto.randomUUID(), seq: ++state.seq, status: "queued", stage: "waiting",
-    frame, frameUrl: frame.dataUrl, mode: pickMode(), nsfw: state.settings.nsfw,
-    intensity: state.settings.intensity, duration: state.settings.duration,
+    frame, frameUrl: frame.dataUrl, mode: pickMode(),
+    duration: state.settings.duration,
     resolution: state.settings.resolution, model: state.settings.videoModel,
-    custom: state.settings.custom, prepass: state.settings.nsfw && state.settings.prepass,
+    custom: state.settings.custom,
     progress: 0, ts: Date.now(), slug: null, caption: null, prompt: null, error: null
   };
   state.queue.push(item); flash(frame.dataUrl); render(); persistQueue(); pump();
-  log(`#${item.seq} captured ${frame.w}x${frame.h} — ${MODES[item.mode].label}${item.nsfw ? " +18" : ""}`);
+  log(`#${item.seq} captured ${frame.w}x${frame.h} — ${MODES[item.mode].label}`);
 }
 function flash(url) {
   const img = $("shot"); img.src = url; img.style.display = "block"; $("cam").style.display = "none";
@@ -494,7 +472,6 @@ function buildDirectorPrompt(item) {
   parts.push(`\n\nMODE BRIEF — ${mode.label.toUpperCase()}\n${mode.brief}`);
   parts.push(`\n\nCAMERA DEFAULT\n${mode.camera}`);
   if (mode.negative) parts.push(`\n\nAVOID\n${mode.negative}`);
-  if (item.nsfw) parts.push("\n\n" + NSFW_BRIEF.replaceAll("{{n}}", String(item.intensity)));
   const dir = (item.custom || "").trim();
   if (item.mode === "custom" || dir)
     parts.push(`\n\nCLIENT DIRECTION (highest priority)\n${dir || mode.brief}`);
@@ -532,24 +509,6 @@ async function direct(item) {
   return json;
 }
 
-/* ============================== PRE-PASS ================================== */
-async function prepass(item, json) {
-  const instruction = json.edit_prompt || (item.nsfw
-    ? `Push this frame toward the sexual moment about to happen, keeping the exact composition, pose, framing and lighting: ${json.scene}. Expose skin, remove or displace clothing where plausible, add a sheen of sweat, flushed skin, arousal. Photographic, not stylised.`
-    : `Nudge this frame toward the moment about to happen, keeping the exact composition, pose, framing and lighting: ${json.scene}`);
-  const res = await withRetry(() => apiFetch("/image/edit", {body:{
-    model:"qwen-edit-uncensored", prompt:instruction, image:item.frameUrl.split(",")[1],
-    safe_mode:false, output_format:"jpeg", resolution:"1K" }}), {label:"prepass"});
-  if (!res.ok) throw Object.assign(new Error(`${res.status} ${(await res.text()).slice(0,160)}`), {status:res.status});
-  return await new Promise((ok, no) => { const f = new FileReader();
-    f.onload = () => ok(f.result); f.onerror = no; f.readAsDataURL(await_blob(res)); });
-  function await_blob(r) { return r.blob(); }
-}
-async function prepass2(item, json) {
-  const res = await prepass(item, json);
-  return res;
-}
-
 /* ============================== PIPELINE ================================== */
 function buildQueueBody(item, imageUrl, prompt, negative) {
   const c = state.constraints[item.model] || {};
@@ -570,12 +529,7 @@ async function processItem(item) {
       prompt:json.motion_prompt, negative:json.negative_prompt});
     log(`#${item.seq} directed → <b>${esc(json.slug)}</b>`, "ok"); render();
 
-    let startImage = item.frameUrl;
-    if (item.prepass) {
-      item.stage = "rewriting still"; item.progress = 16; render();
-      startImage = await prepass(item, json); item.stillUrl = startImage;
-      log(`#${item.seq} pre-pass applied`);
-    }
+    const startImage = item.frameUrl;
 
     item.stage = "queueing"; item.progress = 24; render();
     const q = await withRetry(() => apiJson("/video/queue", {body: buildQueueBody(item, startImage, json.motion_prompt, json.negative_prompt)}),
@@ -625,7 +579,7 @@ async function processItem(item) {
     item.file = saved.path; item.videoUrl = URL.createObjectURL(blob);
     item.status = "done"; item.stage = "saved"; item.progress = 100;
     state.gallery.unshift({ ts:Date.now(), slug:name, file:saved.path, caption:item.caption, mode:item.mode,
-      nsfw:item.nsfw, prompt:item.prompt, duration:item.duration, model:item.model, videoUrl:item.videoUrl });
+      prompt:item.prompt, duration:item.duration, model:item.model, videoUrl:item.videoUrl });
     log(`#${item.seq} saved → <b>${esc(saved.path)}</b> (${saved.via})`, "ok");
   } catch (e) {
     item.status = "error"; item.error = e?.message || String(e);
@@ -733,7 +687,7 @@ async function saveArtifacts(item, blob, name, startImage) {
   const manifest = JSON.stringify({
     ts:new Date().toISOString(), slug:name, file:`${name}.mp4`,
     source_frame: state.settings.saveStills ? `${name}.jpg` : null,
-    mode:item.mode, nsfw:item.nsfw, intensity:item.nsfw ? item.intensity : null,
+    mode:item.mode,
     model:item.model, duration:item.duration, resolution:item.resolution,
     queue_id:item.queueId || null, caption:item.caption, scene:item.scene, prompt:item.prompt
   }) + "\n";
@@ -771,7 +725,7 @@ async function saveArtifacts(item, blob, name, startImage) {
       if (state.settings.saveStills) await opfsWrite(`${day}/${name}.jpg`, dataUrlToBlob(startImage));
       await opfsAppend(`${day}/manifest.jsonl`, manifest);
       await opfsIndexPush({ts:Date.now(), slug:name, file:rel, caption:item.caption, mode:item.mode,
-        nsfw:item.nsfw, prompt:item.prompt, duration:item.duration, model:item.model});
+        prompt:item.prompt, duration:item.duration, model:item.model});
       item.opfs = true;
     } catch (e) { log("device storage: " + e.message, "err"); }
   }
@@ -798,7 +752,7 @@ function render() {
       const el = document.createElement("div"); el.className = "item";
       el.innerHTML = `
         <div class="top"><span class="seq">#${String(i.seq).padStart(3,"0")}</span>
-          <span class="slug">${esc(i.slug || "…" + MODES[i.mode].label.toLowerCase() + (i.nsfw ? "+18" : ""))}</span>
+          <span class="slug">${esc(i.slug || "…" + MODES[i.mode].label.toLowerCase())}</span>
           <span class="state ${st}">${esc(i.status === "working" ? i.stage : i.status)}</span></div>
         ${i.caption ? `<div class="meta">${esc(i.caption)}</div>` : ""}
         ${i.error ? `<div class="meta" style="color:var(--bad)">${esc(i.error)}</div>` : ""}
@@ -822,14 +776,13 @@ function render() {
         <video src="${c.videoUrl}" controls muted loop playsinline preload="metadata"></video>
         <div class="cap"><b>${esc(c.slug)}</b><p>${esc(c.caption || "")}</p>
           <div class="row" style="margin-top:6px">
-            <span class="pill">${esc(MODES[c.mode]?.label || c.mode)}${c.nsfw ? " +18" : ""} · ${esc(c.duration || "")}</span>
+            <span class="pill">${esc(MODES[c.mode]?.label || c.mode)} · ${esc(c.duration || "")}</span>
             <button class="tiny ghost" data-act="share" data-file="${esc(c.file)}">${CAPS.share ? "Save to Photos" : "Save"}</button>
           </div></div>`;
       g.appendChild(el);
     }
   }
   $("modeBadge").textContent = "mode: " + MODES[state.settings.mode].label;
-  $("nsfwBadge").style.display = state.settings.nsfw ? "" : "none";
   $("btnPause").textContent = state.paused ? "Resume queue" : "Pause queue";
 }
 
@@ -874,13 +827,9 @@ function bindUI() {
     else { state.autoTimer = setInterval(shoot, 20000); e.target.style.borderColor = "var(--accent)"; } };
   const bindCheck = (id, key, after) => { $(id).checked = state.settings[key];
     $(id).onchange = (e) => { state.settings[key] = e.target.checked; saveSettings(); after?.(); }; };
-  bindCheck("shuffle", "shuffle"); bindCheck("nsfw", "nsfw", render);
-  bindCheck("prepass", "prepass"); bindCheck("saveStills", "saveStills");
+  bindCheck("shuffle", "shuffle"); bindCheck("saveStills", "saveStills");
   bindCheck("sendAR", "sendAR");
   bindCheck("useProxy", "useProxy", () => loadConstraints());
-  $("mirror")?.remove;
-  $("intensity").value = state.settings.intensity; $("intLabel").textContent = state.settings.intensity;
-  $("intensity").oninput = (e) => { state.settings.intensity = +e.target.value; $("intLabel").textContent = e.target.value; saveSettings(); };
   $("custom").value = state.settings.custom;
   $("custom").oninput = (e) => { state.settings.custom = e.target.value; saveSettings(); };
   $("apiKey").value = state.settings.apiKey;
@@ -909,7 +858,7 @@ function bindUI() {
     if (act === "prompt") {
       const w = window.open("", "_blank");
       w.document.write(`<pre style="font:13px/1.6 ui-monospace;padding:20px;white-space:pre-wrap">${esc(
-        `SLUG: ${item.slug}\nMODE: ${MODES[item.mode].label}${item.nsfw ? " +18 (" + item.intensity + "/5)" : ""}\nMODEL: ${item.model} ${item.duration} ${item.resolution}\n\nCAPTION: ${item.caption}\n\nMOTION PROMPT:\n${item.prompt}\n\nNEGATIVE:\n${item.negative || ""}\n\nQUEUE ID: ${item.queueId || "-"}`)}</pre>`);
+        `SLUG: ${item.slug}\nMODE: ${MODES[item.mode].label}\nMODEL: ${item.model} ${item.duration} ${item.resolution}\n\nCAPTION: ${item.caption}\n\nMOTION PROMPT:\n${item.prompt}\n\nNEGATIVE:\n${item.negative || ""}\n\nQUEUE ID: ${item.queueId || "-"}`)}</pre>`);
     }
     if (act === "rerun") {
       const m = prompt("Re-run #" + item.seq + " as: boring / luck / murphy / funny / serious / custom", item.mode);

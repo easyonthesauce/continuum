@@ -1,0 +1,7 @@
+{
+  "name": "continuum",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A photograph, then the next 8 seconds — MiniMax H3 image-to-video on Venice."
+}

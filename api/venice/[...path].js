@@ -1,44 +1,45 @@
-import { Readable } from "node:stream";
+// Edge proxy for the Venice API.
+// The browser calls /api/venice/<whatever> and this forwards it to
+// https://api.venice.ai/api/v1/<whatever>, injecting the server-side key so
+// VENICE_API_KEY never ships to the client. Streams responses (incl. video).
 
-export const config = { runtime: "nodejs", maxDuration: 60 };
+export const config = { runtime: "edge" };
 
-const UPSTREAM = "https://api.venice.ai/api/v1";
-const SKIP = new Set(["host","origin","referer","connection","content-length",
-                      "accept-encoding","transfer-encoding","keep-alive"]);
+const VENICE = "https://api.venice.ai/api/v1";
 
-export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    return res.status(204)
-      .setHeader("access-control-allow-origin", "*")
-      .setHeader("access-control-allow-headers", "*")
-      .setHeader("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS")
-      .end();
+export default async function handler(req) {
+  const key = process.env.VENICE_API_KEY;
+  const url = new URL(req.url);
+  const tail = url.pathname.replace(/^\/api\/venice/, "") + url.search;
+
+  const headers = new Headers();
+  headers.set("Content-Type", req.headers.get("content-type") || "application/json");
+  // Prefer the server-side key; fall back to a client-supplied key if present.
+  if (key) headers.set("Authorization", "Bearer " + key);
+  else if (req.headers.get("authorization")) headers.set("Authorization", req.headers.get("authorization"));
+
+  if (!key && !req.headers.get("authorization")) {
+    return Response.json(
+      { error: "No Venice API key. Set VENICE_API_KEY in Vercel env, or enter a key in Settings." },
+      { status: 401 }
+    );
   }
 
-  const segs = req.query.path;
-  const path = "/" + (Array.isArray(segs) ? segs.join("/") : segs || "");
-  const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const init = { method: req.method, headers };
+  if (req.method !== "GET" && req.method !== "HEAD") init.body = await req.arrayBuffer();
 
-  const headers = {};
-  for (const [k, v] of Object.entries(req.headers)) if (!SKIP.has(k)) headers[k] = v;
-  if (!headers.authorization && process.env.VENICE_API_KEY) {
-    headers.authorization = "Bearer " + process.env.VENICE_API_KEY;
+  let upstream;
+  try {
+    upstream = await fetch(VENICE + tail, init);
+  } catch (e) {
+    return Response.json({ error: "Upstream fetch failed: " + (e?.message || e) }, { status: 502 });
   }
 
-  let body;
-  if (!["GET", "HEAD"].includes(req.method)) {
-    const chunks = [];
-    for await (const c of req) chunks.push(c);
-    if (chunks.length) body = Buffer.concat(chunks);
-  }
+  const respHeaders = new Headers();
+  const ct = upstream.headers.get("content-type");
+  if (ct) respHeaders.set("content-type", ct);
+  const cd = upstream.headers.get("content-disposition");
+  if (cd) respHeaders.set("content-disposition", cd);
 
-  const up = await fetch(UPSTREAM + path + qs, { method: req.method, headers, body });
-
-  res.statusCode = up.status;
-  res.setHeader("content-type", up.headers.get("content-type") || "application/octet-stream");
-  res.setHeader("cache-control", "no-store");
-  res.setHeader("access-control-allow-origin", "*");
-
-  if (!up.body) return res.end();
-  Readable.fromWeb(up.body).pipe(res);
+  return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
 }

@@ -1,9 +1,10 @@
 {
   "name": "Continuum",
   "short_name": "Continuum",
+  "description": "A photograph, then the next 8 seconds.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0b0f",
   "theme_color": "#0a0b0f",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+  "orientation": "portrait"
 }

@@ -1,45 +1,45 @@
-# CONTINUUM
+# Continuum
 
-A webcam frame becomes the next few seconds of video, via MiniMax H3 image-to-video on the Venice API.
+A photograph, then the next 8 seconds. Grab a webcam frame, a director model
+writes what happens *immediately after* the shutter, and MiniMax H3
+image-to-video renders it. Runs as a static page plus two Edge functions.
 
-Pick a mode (Boring / Luck / Murphy's Law / Funny / Serious / Custom), optionally arm the 18+ layer,
-shoot. Each shot is queued first-come-first-served, directed by a vision model, rendered, and saved
-with a name that describes the scene.
+## Layout
 
-## Windows
+```
+public/index.html            the whole app
+public/manifest.webmanifest  PWA manifest
+api/venice/[...path].js       Edge proxy → api.venice.ai (injects the key)
+api/health.js                 boot probe; flips the client into proxy mode
+```
 
-    winget install OpenJS.NodeJS
-    $env:VENICE_API_KEY="sk-..."; node server.mjs
-    # open http://localhost:8787
+## Deploy (Vercel)
 
-For the camera on a phone, either use a tunnel (real cert, no trust setup):
+No build step. Vercel serves `public/` statically and the `api/` folder as Edge
+functions.
 
-    winget install Cloudflare.cloudflared
-    cloudflared tunnel --url http://localhost:8787
+### The one thing you must set
 
-or a trusted local cert with mkcert:
+Add an environment variable so the key stays server-side:
 
-    winget install FiloSottile.mkcert
-    mkcert -install
-    mkcert localhost 127.0.0.1 <your-lan-ip>
-    Copy-Item (Join-Path (mkcert -CAROOT) "rootCA.pem") .
-    $env:TLS_KEY="localhost+2-key.pem"; $env:TLS_CERT="localhost+2.pem"; node server.mjs
+- **Key:** `VENICE_API_KEY`
+- **Value:** your Venice API key (`sk-...`)
+- **Environments:** Production (and Preview if you use it)
 
-Install rootCA.pem on the phone from https://<your-ip>:8787/rootCA.pem, then enable trust in
-Settings > General > About > Certificate Trust Settings.
+Then redeploy. Once it's set, `/api/health` returns `proxy: true`, the browser
+routes every Venice call through `/api/venice`, and the key never reaches the
+client.
 
-Open the firewall once, as admin:
+Without the env var the app still loads — it falls back to asking for a key in
+**Settings**, used directly from the browser (works, but exposes the key and
+can hit CORS). Setting the env var is the intended path.
 
-    New-NetFirewallRule -DisplayName "Continuum 8787" -Direction Inbound -LocalPort 8787 -Protocol TCP -Action Allow
+## Local dev
 
-## Deploy to Vercel
+`npx vercel dev` from this folder, with `VENICE_API_KEY` in a `.env` file.
 
-    npm i -g vercel
-    vercel link
-    vercel env add VENICE_API_KEY production
-    vercel --prod
+## Saving clips
 
-## Save ladder
-
-First available wins: desktop folder -> server disk (./captures) -> device storage (OPFS) ->
-share sheet -> Downloads. The header badge shows which is live.
+Vercel's filesystem is ephemeral, so clips are saved on the client: a real
+folder on desktop Chrome/Edge, the share sheet → Photos on iOS, device storage
+(OPFS) otherwise, falling back to a normal download.
