@@ -1,19 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/venice/:path*", "destination": "/api/venice/:path*" }
-  ],
-  "functions": {
-    "api/**/*.js": { "maxDuration": 60 }
-  },
-  "regions": ["iad1"],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Permissions-Policy", "value": "camera=(self)" },
-        { "key": "Referrer-Policy", "value": "no-referrer" },
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true
 }
