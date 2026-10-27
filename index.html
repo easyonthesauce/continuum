@@ -415,7 +415,8 @@ async function enableCamera() {
   $("btnShoot").disabled = false; $("camBadge").textContent = "camera: live"; $("camBadge").classList.add("on");
   applyMirror();
 }
-function applyMirror() { '$("cam").style.transform = `scaleX(${state.settings.mirror && state.facing === "user" ? -1 : 1})`; 
+function applyMirror() { 
+  //$("cam").style.transform = `scaleX(${state.settings.mirror && state.facing === "user" ? -1 : 1})`; 
   }
 
 /* ============================== CAPTURE =================================== */
