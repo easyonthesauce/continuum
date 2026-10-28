@@ -1,5 +1,6 @@
 // Edge proxy for the Venice API.
-// The browser calls /api/venice/<whatever> and this forwards it to
+// The browser calls /api/venice/<whatever> (rewritten here by vercel.json,
+// since [...path] catch-alls only work in Next.js) and this forwards it to
 // https://api.venice.ai/api/v1/<whatever>, injecting the server-side key so
 // VENICE_API_KEY never ships to the client. Streams responses (incl. video).
 
@@ -10,7 +11,10 @@ const VENICE = "https://api.venice.ai/api/v1";
 export default async function handler(req) {
   const key = process.env.VENICE_API_KEY;
   const url = new URL(req.url);
-  const tail = url.pathname.replace(/^\/api\/venice/, "") + url.search;
+  const rewritten = url.searchParams.get("__path");
+  url.searchParams.delete("__path");
+  const path = rewritten !== null ? "/" + rewritten : url.pathname.replace(/^\/api\/venice/, "");
+  const tail = path + url.search;
 
   const headers = new Headers();
   headers.set("Content-Type", req.headers.get("content-type") || "application/json");

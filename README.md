@@ -9,7 +9,7 @@ image-to-video renders it. Runs as a static page plus two Edge functions.
 ```
 public/index.html            the whole app
 public/manifest.webmanifest  PWA manifest
-api/venice/[...path].js       Edge proxy → api.venice.ai (injects the key)
+api/venice.js                 Edge proxy → api.venice.ai (injects the key)
 api/health.js                 boot probe; flips the client into proxy mode
 ```
 
