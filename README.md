@@ -1,6 +1,6 @@
 # Continuum
 
-A photograph, then the next 8 seconds. Grab a webcam frame, a director model
+Take a photo and then surmise what happens next. A photograph, then the next 8 seconds. Grab a webcam frame, a director model
 writes what happens *immediately after* the shutter, and MiniMax H3
 image-to-video renders it. Runs as a static page plus two Edge functions.
 
